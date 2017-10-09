@@ -10,8 +10,53 @@ if(($userInfo = $tool->getUser($redis))==false)
 $gz_num = $redis->scard("following:".$userInfo['userid']);  
 $fs_num = $redis->scard("follow:".$userInfo['userid']);  
 
+
+
+//拉模型 
+$star = $redis->smembers('following:'.$userInfo['userid']);
+
+$star[] = $userInfo['userid'];
+
+$lastpull = $redis->get("lastpull:userid:".$userInfo['userid']);
+
+if(!$lastpull) {
+    $lastpull = 0;
+}
+
+$latest = array();
+
+foreach ($star as $v) {
+    $latest = array_merge(
+            $latest,
+            $redis->zrangebyscore('starpost:userid:'.$v,
+                    $lastpull+1,
+                   10000000000)
+            );
+
+}
+
+sort($latest,SORT_NUMERIC);
+
+if(!empty($latest)) {
+
+    $redis->set('lastpull:userid:'.$userInfo['userid'],  end($latest));
+}
+
+foreach ($latest as $l) {
+    $redis->lpush('recivepost:'.$userInfo['userid'],$l);
+}
+//收集100条微博在个人主页
+$redis->ltrim('recivepost:'.$userInfo['userid'],0,100);
+
+// 拉模型 END
+
+
+
+
+//推模型
+
 //截取推送过来的微博， 只要50个
- $redis->ltrim('recivepost:'.$userInfo['userid'],0,49); //从左边截取
+// $redis->ltrim('recivepost:'.$userInfo['userid'],0,49); //从左边截取
  //普通关联查询文章内容 缺点是一个个字段查
 // $newPoster = $redis->sort('recivepost:'.$userInfo['userid'],array(
 //     'sort'=>"desc",
